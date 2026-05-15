@@ -1,0 +1,18 @@
+# Raw and intermediate data
+data/raw/
+data/processed/
+
+# Logs and temporary artifacts
+*.log
+*.tmp
+*.stswp
+~*.dta
+
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

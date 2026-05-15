@@ -1,0 +1,2355 @@
+-------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/outp
+> ut/replication_log.txt
+  log type:  text
+ opened on:  15 May 2026, 19:12:44
+
+. 
+. local pipeline ///
+>     "01_clean.do" ///
+>     "02_descriptive.do" ///
+>     "03_main_tables.do" ///
+>     "04_robustness.do" ///
+>     "05_appendix.do"
+
+. 
+. foreach f of local pipeline {
+  2.     di as result "Running: `f'"
+  3.     capture noisily do "$code/`f'"
+  4.     if _rc != 0 {
+  5.         di as err "Pipeline stopped at `f' with rc=" _rc
+  6.         log close
+  7.         exit _rc
+  8.     }
+  9. }
+Running: 01_clean.do
+
+. /*============================================================
+>   File:    01_clean.do
+>   Role:    Build canonical samples used across all estimations
+> ============================================================*/
+. 
+. version 16
+
+. clear
+
+. set more off
+
+. 
+. * Ensure required sources exist.
+. foreach f in edited_data.dta edited_data_young.dta edited_data_36_48.dta all_
+> years.dta occ_classification.dta {
+  2.     capture confirm file "$raw/`f'"
+  3.     if _rc != 0 {
+  4.         di as err "Missing source file: $raw/`f'"
+  5.         exit 601
+  6.     }
+  7. }
+
+. 
+. * Adult sample (main analysis window).
+. use "$raw/edited_data.dta", clear
+
+. keep if inrange(age,30,40)
+(0 observations deleted)
+
+. keep if inrange(birthyear,1971,1985)
+(73,225 observations deleted)
+
+. save "$proc/analysis_sample.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/analysis_sample.dta saved
+
+. 
+. * Young sample for short-run outcomes.
+. use "$raw/edited_data_young.dta", clear
+
+. save "$proc/analysis_sample_young.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/analysis_sample_young.dta saved
+
+. 
+. * Older cohorts used by placebo/falsification blocks.
+. use "$raw/edited_data_36_48.dta", clear
+
+. save "$proc/analysis_sample_36_48.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/analysis_sample_36_48.dta saved
+
+. 
+. * Keep supporting snapshots in processed.
+. use "$raw/all_years.dta", clear
+
+. save "$proc/all_years.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/all_years.dta saved
+
+. use "$raw/occ_classification.dta", clear
+
+. save "$proc/occ_classification.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/occ_classification.dta saved
+
+. use "$raw/edited_data.dta", clear
+
+. save "$proc/edited_data.dta", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/data/processed/edited_data.dta saved
+
+. 
+. foreach out in analysis_sample.dta analysis_sample_young.dta analysis_sample_
+> 36_48.dta all_years.dta occ_classification.dta edited_data.dta {
+  2.     capture confirm file "$proc/`out'"
+  3.     if _rc != 0 {
+  4.         di as err "Failed to create: $proc/`out'"
+  5.         exit 603
+  6.     }
+  7. }
+
+. 
+. use "$proc/analysis_sample.dta", clear
+
+. count
+  304,343
+
+. di as txt "Main sample rows: " r(N)
+Main sample rows: 304343
+
+. di "✓ 01_clean.do complete"
+✓ 01_clean.do complete
+
+. 
+end of do-file
+Running: 02_descriptive.do
+
+. /*============================================================
+>   File:    02_descriptive.do
+>   Role:    Descriptives and strike-trend figures
+> ============================================================*/
+. 
+. version 16
+
+. clear
+
+. set more off
+
+. 
+. * ------------------------------ *
+. * Table 1: descriptive statistics *
+. * ------------------------------ *
+. use "$proc/analysis_sample.dta", clear
+
+. 
+. collapse ///
+>     (sum) nobs ///
+>     (mean) sec_com supc aedu unemployed nilf nini log_wage ila_tot index1 hst
+> rt ///
+>     (sd) sec_com_sd=sec_com supc_sd=supc aedu_sd=aedu unemployed_sd=unemploye
+> d ///
+>         nilf_sd=nilf nini_sd=nini log_wage_sd=log_wage ila_tot_sd=ila_tot ///
+>         index1_sd=index1 hstrt_sd=hstrt ///
+>     [aw=pondera], by(male)
+
+. 
+. gen sex_label = cond(male==1, "Male", "Female")
+
+. order sex_label male nobs
+
+. export excel using "$tables/Table1.xls", replace firstrow(variables)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/table
+> s/Table1.xls saved
+
+. 
+. * ------------------------------ *
+. * Figure 2A: strike days by year *
+. * ------------------------------ *
+. use "$raw/Day_lost_by_year_1983_2014_no_national_strikes.dta", clear
+
+. reshape long days_lost_, i(provincia province) j(year)
+(j = 1983 1984 1985 1986 1987 1988 1989 1990 1991 1992 1993 1994 1995 1996 1997
+>  1998 1999 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2
+> 013 2014)
+
+Data                               Wide   ->   Long
+-----------------------------------------------------------------------------
+Number of observations               25   ->   800         
+Number of variables                  34   ->   4           
+j variable (32 values)                    ->   year
+xij variables:
+days_lost_1983 days_lost_1984 ... days_lost_2014->days_lost_
+-----------------------------------------------------------------------------
+
+. drop if province=="National Strikes"
+(32 observations deleted)
+
+. twoway line days_lost_ year, ///
+>     by(province, compact note("")) ///
+>     yline(0, lpattern(dash) lcolor(gs10)) ///
+>     xline(1998, lcolor(navy)) ///
+>     xtitle("Year") ///
+>     ytitle("Teacher strike days") ///
+>     graphregion(color(white))
+
+. graph export "$figures/Figure2A.png", replace width(2400)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/figur
+> es/Figure2A.png written in PNG format
+
+. 
+. * ---------------------------------- *
+. * Figure 2B: number of strike events *
+. * ---------------------------------- *
+. use "$raw/number_teacher_strikes_1983_2014_no_national_strikes.dta", clear
+
+. reshape long n_strike_, i(provincia province) j(year)
+(j = 1983 1984 1985 1986 1987 1988 1989 1990 1991 1992 1993 1994 1995 1996 1997
+>  1998 1999 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2
+> 013 2014)
+
+Data                               Wide   ->   Long
+-----------------------------------------------------------------------------
+Number of observations               25   ->   800         
+Number of variables                  34   ->   4           
+j variable (32 values)                    ->   year
+xij variables:
+n_strike_1983 n_strike_1984 ... n_strike_2014->n_strike_
+-----------------------------------------------------------------------------
+
+. drop if province=="National Strikes"
+(32 observations deleted)
+
+. twoway line n_strike_ year, ///
+>     by(province, compact note("")) ///
+>     yline(0, lpattern(dash) lcolor(gs10)) ///
+>     xline(1998, lcolor(navy)) ///
+>     xtitle("Year") ///
+>     ytitle("Number of strike events") ///
+>     graphregion(color(white))
+
+. graph export "$figures/Figure2B.png", replace width(2400)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/figur
+> es/Figure2B.png written in PNG format
+
+. di "✓ 02_descriptive.do complete"
+✓ 02_descriptive.do complete
+
+. 
+end of do-file
+Running: 03_main_tables.do
+
+. /*============================================================
+>   File:    03_main_tables.do
+>   Role:    Main estimation outputs (Table 2-5 + summary csvs)
+> ============================================================*/
+. 
+. version 16
+
+. clear
+
+. set more off
+
+. 
+. use "$proc/analysis_sample.dta", clear
+
+. tempfile main_sample
+
+. save `main_sample'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002e.tmp saved as .dta format
+
+. 
+. * Export summary moments for Python slide figures.
+. preserve
+
+.     collapse (sum) nobs (mean) treatment aedu [aw=pondera], by(male)
+
+.     tostring male, replace force
+male was byte now str1
+
+.     gen male_code = cond(lower(male)=="hombre" | lower(male)=="male" | male==
+> "1", 1, 0)
+
+.     gen male_label = cond(male_code==1, "Male", "Female")
+
+.     order male_code male_label nobs treatment aedu
+
+.     export delimited using "$tables/mean_stats_by_gender.csv", replace
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/table
+> s/mean_stats_by_gender.csv saved
+
+. restore
+
+. 
+. tempname sepost
+
+. postfile `sepost' str6 group str8 outcome double b_treat se_treat mean_treat 
+> mean_outcome using "$tables/treat_se_by_gender.dta", replace
+(file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/output/tables/treat_se_by_gender.dta not found)
+
+. 
+. foreach sexflag in 0 1 {
+  2.     use `main_sample', clear
+  3.     keep if male==`sexflag'
+  4.     local suffix = cond(`sexflag'==1, "MalS", "FemS")
+  5. 
+.     collapse (sum) nobs ///
+>         (mean) treatment pa_days_lost pbi_pc ///
+>         sec_com supc aedu unemployed nilf nini ///
+>         log_ila log_wage ila_tot index1 hstrt informal_prod ///
+>         independent casado nro_kids kid_older ipcf edu_partner ///
+>         parent_not_delayed parent_gap_aedu ///
+>         (p10) log_wage_10 (p20) log_wage_20 (p30) log_wage_30 (p40) log_wage_
+> 40 (p50) log_wage_50 ///
+>         (p60) log_wage_60 (p70) log_wage_70 (p80) log_wage_80 (p90) log_wage_
+> 90 ///
+>         (p10) ila_tot_10 (p20) ila_tot_20 (p30) ila_tot_30 (p40) ila_tot_40 (
+> p50) ila_tot_50 ///
+>         (p60) ila_tot_60 (p70) ila_tot_70 (p80) ila_tot_80 (p90) ila_tot_90 /
+> //
+>         (p10) aedu_10 (p20) aedu_20 (p30) aedu_30 (p40) aedu_40 (p50) aedu_50
+>  ///
+>         (p60) aedu_60 (p70) aedu_70 (p80) aedu_80 (p90) aedu_90 ///
+>         [aw=pondera], by(birthyear surveyyear province male)
+  6. 
+.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*surv
+> eyyear i.province*surveyyear pa_days_lost pbi_pc"
+  7.     egen cluster_id = group(province)
+  8. 
+.     local mA
+  9.     foreach y in sec_com supc aedu {
+ 10.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 11.         estimates store `y'
+ 12.         local mA "`mA' `y'"
+ 13.     }
+ 14.     esttab `mA' using "$tables/Table2_PanelA_`suffix'.csv", csv replace no
+> omitted ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 15.     estimates clear
+ 16. 
+.     local mB
+ 17.     foreach y in unemployed nilf nini {
+ 18.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 19.         estimates store `y'
+ 20.         local mB "`mB' `y'"
+ 21.     }
+ 22.     esttab `mB' using "$tables/Table2_PanelB_`suffix'.csv", csv replace no
+> omitted ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 23.     estimates clear
+ 24. 
+.     local mC
+ 25.     foreach y in log_ila log_wage ila_tot {
+ 26.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 27.         estimates store `y'
+ 28.         local mC "`mC' `y'"
+ 29.     }
+ 30.     esttab `mC' using "$tables/Table2_PanelC_`suffix'.csv", csv replace no
+> omitted ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 31.     estimates clear
+ 32. 
+.     local mD
+ 33.     foreach y in index1 hstrt informal_prod {
+ 34.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 35.         estimates store `y'
+ 36.         local mD "`mD' `y'"
+ 37.     }
+ 38.     esttab `mD' using "$tables/Table2_PanelD_`suffix'.csv", csv replace no
+> omitted ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 39.     estimates clear
+ 40. 
+.     local m3
+ 41.     foreach y in ila_tot_10 ila_tot_20 ila_tot_30 ila_tot_40 ila_tot_50 il
+> a_tot_60 ila_tot_70 ila_tot_80 ila_tot_90 ///
+>                  log_wage_10 log_wage_20 log_wage_30 log_wage_40 log_wage_50 
+> log_wage_60 log_wage_70 log_wage_80 log_wage_90 ///
+>                  aedu_10 aedu_20 aedu_30 aedu_40 aedu_50 aedu_60 aedu_70 aedu
+> _80 aedu_90 {
+ 42.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 43.         estimates store `y'
+ 44.         local m3 "`m3' `y'"
+ 45.     }
+ 46.     esttab `m3' using "$tables/Table3_`suffix'.csv", csv replace noomitted
+>  ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 47.     estimates clear
+ 48. 
+.     local m4
+ 49.     foreach y in independent casado nro_kids kid_older ipcf edu_partner {
+ 50.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 51.         estimates store `y'
+ 52.         local m4 "`m4' `y'"
+ 53.     }
+ 54.     esttab `m4' using "$tables/Table4_`suffix'.csv", csv replace noomitted
+>  ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 55.     estimates clear
+ 56. 
+.     local m5
+ 57.     foreach y in parent_not_delayed parent_gap_aedu {
+ 58.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cluster_id)
+ 59.         estimates store `y'
+ 60.         local m5 "`m5' `y'"
+ 61.     }
+ 62.     esttab `m5' using "$tables/Table5_`suffix'.csv", csv replace noomitted
+>  ///
+>         keep(treatment _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) 
+> b(4)
+ 63.     estimates clear
+ 64. 
+.     quietly summarize treatment [aw=nobs]
+ 65.     local mt = r(mean)
+ 66.     quietly summarize log_wage [aw=nobs]
+ 67.     local myw = r(mean)
+ 68.     quietly summarize aedu [aw=nobs]
+ 69.     local mye = r(mean)
+ 70.     quietly xi: reg log_wage `rhs' [aw=nobs], cluster(cluster_id)
+ 71.     local bw = _b[treatment]
+ 72.     local sew = _se[treatment]
+ 73.     quietly xi: reg aedu `rhs' [aw=nobs], cluster(cluster_id)
+ 74.     local be = _b[treatment]
+ 75.     local see = _se[treatment]
+ 76.     post `sepost' ("`suffix'") ("log_wage") (`bw') (`sew') (`mt') (`myw')
+ 77.     post `sepost' ("`suffix'") ("aedu") (`be') (`see') (`mt') (`mye')
+ 78. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelA_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelB_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelC_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelD_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table3_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table4_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table5_FemS.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelA_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelB_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelC_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table2_PanelD_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table3_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table4_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table5_MalS.csv)
+
+. 
+. postclose `sepost'
+
+. use "$tables/treat_se_by_gender.dta", clear
+
+. export delimited using "$tables/treat_se_by_gender.csv", replace
+(file c:/Users/lyuan/OneDrive/Desktop/Replication
+    Files/Replication/output/tables/treat_se_by_gender.csv not found)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/table
+> s/treat_se_by_gender.csv saved
+
+. erase "$tables/treat_se_by_gender.dta"
+
+. di "✓ 03_main_tables.do complete"
+✓ 03_main_tables.do complete
+
+. 
+end of do-file
+Running: 04_robustness.do
+
+. /*============================================================
+>   File:    04_robustness.do
+>   Role:    Robustness and short-run results (Table 6-8)
+> ============================================================*/
+. 
+. version 16
+
+. clear
+
+. set more off
+
+. 
+. capture program drop robust_export
+
+. program define robust_export
+  1.     syntax , OUTFILE(string) VARS(string) RHS(string) KEEP(string)
+  2.     local mlist
+  3.     foreach y of local vars {
+  4.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cid)
+  5.         estimates store r_`y'
+  6.         local mlist "`mlist' r_`y'"
+  7.     }
+  8.     esttab `mlist' using "`outfile'", csv replace noomitted ///
+>         keep(`keep' _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) b(4
+> )
+  9.     estimates clear
+ 10. end
+
+. 
+. * --------------------------- *
+. * Table 6: early vs late grade *
+. * --------------------------- *
+. use "$proc/analysis_sample.dta", clear
+
+. rename birthyear cohort
+
+. gen strike_early = .
+(304,343 missing values generated)
+
+. gen strike_late  = .
+(304,343 missing values generated)
+
+. forvalues c = 1971/1995 {
+  2.     local g1 = `c'+6
+  3.     local g2 = `c'+7
+  4.     local g3 = `c'+8
+  5.     local g4 = `c'+9
+  6.     local g5 = `c'+10
+  7.     local g6 = `c'+11
+  8.     local g7 = `c'+12
+  9.     replace strike_early = (days_lost_`g1'+days_lost_`g2'+days_lost_`g3'+d
+> ays_lost_`g4')/10 if cohort==`c'
+ 10.     replace strike_late  = (days_lost_`g5'+days_lost_`g6'+days_lost_`g7')/
+> 10 if cohort==`c'
+ 11. }
+(21,940 real changes made)
+(21,940 real changes made)
+(25,279 real changes made)
+(25,279 real changes made)
+(27,572 real changes made)
+(27,572 real changes made)
+(30,206 real changes made)
+(30,206 real changes made)
+(31,283 real changes made)
+(31,283 real changes made)
+(29,987 real changes made)
+(29,987 real changes made)
+(27,587 real changes made)
+(27,587 real changes made)
+(25,821 real changes made)
+(25,821 real changes made)
+(22,498 real changes made)
+(22,498 real changes made)
+(19,592 real changes made)
+(19,592 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. rename cohort birthyear
+
+. tempfile t6
+
+. save `t6'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002e.tmp saved as .dta format
+
+. 
+. foreach g in 0 1 {
+  2.     use `t6', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) strike_early strike_late pa_days_lost pbi_p
+> c aedu index1 log_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "strike_early strike_late i.surveyyear i.birthyear i.provinc
+> e i.birthyear*surveyyear i.province*surveyyear pa_days_lost pbi_pc"
+  8.     robust_export, outfile("$tables/Table6_`suffix'.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("strike_early strike_late")
+  9. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table6_FemS.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table6_MalS.csv)
+
+. 
+. * ----------------------------------------- *
+. * Table 7: selected sample and placebo tests *
+. * ----------------------------------------- *
+. use "$proc/analysis_sample.dta", clear
+
+. tempfile base
+
+. save `base'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002f.tmp saved as .dta format
+
+. 
+. forvalues s = 1/4 {
+  2.     use `base', clear
+  3.     if `s'==1 {
+  4.         keep if male==0
+  5.         local out "Table7_PA_FemS_with_caba"
+  6.     }
+  7.     if `s'==2 {
+  8.         keep if male==1
+  9.         local out "Table7_PA_MalS_with_caba"
+ 10.     }
+ 11.     if `s'==3 {
+ 12.         keep if male==0 & provincia!=5 & provincia!=1
+ 13.         local out "Table7_PB_FemS_no_bs_as"
+ 14.     }
+ 15.     if `s'==4 {
+ 16.         keep if male==1 & provincia!=5 & provincia!=1
+ 17.         local out "Table7_PB_MalS_no_bs_as"
+ 18.     }
+ 19.     collapse (sum) nobs (mean) treatment pa_days_lost pbi_pc aedu index1 l
+> og_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+ 20.     egen cid = group(province)
+ 21.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*s
+> urveyyear i.province*surveyyear pa_days_lost pbi_pc"
+ 22.     robust_export, outfile("$tables/`out'.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("treatment")
+ 23. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PA_FemS_with_caba.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PA_MalS_with_caba.csv)
+(183,346 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PB_FemS_no_bs_as.csv)
+(193,936 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PB_MalS_no_bs_as.csv)
+
+. 
+. * Panel C: low migration provinces.
+. foreach g in 0 1 {
+  2.     use `base', clear
+  3.     keep if male==`g' & !inlist(provincia,3,7,14,16,20)
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treatment pa_days_lost pbi_pc aedu index1 l
+> og_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*s
+> urveyyear i.province*surveyyear pa_days_lost pbi_pc"
+  8.     robust_export, outfile("$tables/Table7_PC_`suffix'_low_mig_prov.csv") 
+> ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("treatment")
+  9. }
+(166,929 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PC_FemS_low_mig_prov.csv)
+(177,185 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PC_MalS_low_mig_prov.csv)
+
+. 
+. * Panel D: 2010+ survey years.
+. foreach g in 0 1 {
+  2.     use `base', clear
+  3.     keep if male==`g' & surveyyear>=2010
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treatment pa_days_lost pbi_pc aedu index1 l
+> og_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*s
+> urveyyear i.province*surveyyear pa_days_lost pbi_pc"
+  8.     robust_export, outfile("$tables/Table7_PD_`suffix'_2010_over.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("treatment")
+  9. }
+(206,297 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PD_FemS_2010_over.csv)
+(213,246 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PD_MalS_2010_over.csv)
+
+. 
+. * Panel F: province-specific cohort trends excluding Buenos Aires.
+. foreach g in 0 1 {
+  2.     use `base', clear
+  3.     keep if male==`g' & provincia!=5
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treatment pa_days_lost pbi_pc aedu index1 l
+> og_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*s
+> urveyyear i.province*surveyyear i.province*birthyear pa_days_lost pbi_pc"
+  8.     robust_export, outfile("$tables/Table7_PF_`suffix'.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("treatment")
+  9. }
+(150,277 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PF_FemS.csv)
+(162,779 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PF_MalS.csv)
+
+. 
+. * Panel G: cap high treatment at p99.
+. foreach g in 0 1 {
+  2.     use `base', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treatment pa_days_lost pbi_pc aedu index1 l
+> og_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     quietly summarize treatment, detail
+  7.     drop if treatment > r(p99)
+  8.     egen cid = group(province)
+  9.     local rhs "treatment i.surveyyear i.birthyear i.province i.birthyear*s
+> urveyyear i.province*surveyyear pa_days_lost pbi_pc"
+ 10.     robust_export, outfile("$tables/Table7_PG_`suffix'_treatment_lower_tha
+> n_200.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("treatment")
+ 11. }
+(145,895 observations deleted)
+(21 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PG_FemS_treatment_lower_than_200.csv)
+(158,448 observations deleted)
+(21 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PG_MalS_treatment_lower_than_200.csv)
+
+. 
+. * Panel E: falsification on 36-48 cohorts.
+. use "$proc/analysis_sample_36_48.dta", clear
+
+. keep if inrange(birthyear,1964,1978)
+(70,824 observations deleted)
+
+. rename birthyear cohort
+
+. drop treatment pa_days_lost pbi_pc
+
+. merge m:1 provincia using "$raw/prov_pbg_pc_wide.dta", nogen keep(master matc
+> h)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         6,856
+        from master                     6,856  
+        from using                          0  
+
+    Matched                           244,697  
+    -----------------------------------------
+
+. gen fake_treat = .
+(251,553 missing values generated)
+
+. gen fake_pa = .
+(251,553 missing values generated)
+
+. gen fake_gdp = .
+(251,553 missing values generated)
+
+. forvalues c = 1964/1978 {
+  2.     local y1 = `c'+13
+  3.     local y2 = `c'+14
+  4.     local y3 = `c'+15
+  5.     local y4 = `c'+16
+  6.     local y5 = `c'+17
+  7.     local y6 = `c'+18
+  8.     local y7 = `c'+19
+  9.     replace fake_treat = (days_lost_`y1'+days_lost_`y2'+days_lost_`y3'+day
+> s_lost_`y4'+days_lost_`y5'+days_lost_`y6'+days_lost_`y7')/10 if cohort==`c'
+ 10.     replace fake_pa    = (dlpa_`y1'+dlpa_`y2'+dlpa_`y3'+dlpa_`y4'+dlpa_`y5
+> '+dlpa_`y6'+dlpa_`y7')/10 if cohort==`c'
+ 11.     replace fake_gdp   = (pbgpc`y1'+pbgpc`y2'+pbgpc`y3'+pbgpc`y4'+pbgpc`y5
+> '+pbgpc`y6'+pbgpc`y7')/7 if cohort==`c'
+ 12. }
+(20,357 real changes made)
+(20,357 real changes made)
+(19,715 real changes made)
+(22,435 real changes made)
+(22,435 real changes made)
+(21,800 real changes made)
+(23,805 real changes made)
+(23,805 real changes made)
+(23,116 real changes made)
+(24,903 real changes made)
+(24,903 real changes made)
+(24,220 real changes made)
+(24,940 real changes made)
+(24,940 real changes made)
+(24,290 real changes made)
+(23,267 real changes made)
+(23,267 real changes made)
+(22,686 real changes made)
+(22,063 real changes made)
+(22,063 real changes made)
+(21,480 real changes made)
+(20,211 real changes made)
+(20,211 real changes made)
+(19,654 real changes made)
+(18,054 real changes made)
+(18,054 real changes made)
+(17,575 real changes made)
+(14,946 real changes made)
+(14,946 real changes made)
+(14,583 real changes made)
+(12,362 real changes made)
+(12,362 real changes made)
+(12,035 real changes made)
+(10,288 real changes made)
+(10,288 real changes made)
+(10,006 real changes made)
+(7,553 real changes made)
+(7,553 real changes made)
+(7,336 real changes made)
+(4,749 real changes made)
+(4,749 real changes made)
+(4,605 real changes made)
+(1,620 real changes made)
+(1,620 real changes made)
+(1,596 real changes made)
+
+. rename cohort birthyear
+
+. tempfile fake
+
+. save `fake'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002g.tmp saved as .dta format
+
+. 
+. foreach g in 0 1 {
+  2.     use `fake', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) fake_treat fake_pa fake_gdp aedu index1 log
+> _wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "fake_treat i.surveyyear i.birthyear i.province i.birthyear*
+> surveyyear i.province*surveyyear fake_pa fake_gdp"
+  8.     robust_export, outfile("$tables/Table7_PE_`suffix'_falsification.csv")
+>  ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("fake_treat fake_pa fake_gdp")
+  9. }
+(117,806 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PE_FemS_falsification.csv)
+(133,747 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PE_MalS_falsification.csv)
+
+. 
+. * Panel H: pre-school placebo with corrected 5-year GDP mean.
+. use "$proc/analysis_sample.dta", clear
+
+. keep if birthyear>=1980
+(242,173 observations deleted)
+
+. rename birthyear cohort
+
+. drop pbi_pc pa_days_lost treatment
+
+. merge m:1 provincia using "$raw/prov_pbg_pc_wide.dta", nogen keep(master matc
+> h)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         1,675
+        from master                     1,675  
+        from using                          0  
+
+    Matched                            60,495  
+    -----------------------------------------
+
+. gen pre_treat = .
+(62,170 missing values generated)
+
+. gen pre_pa = .
+(62,170 missing values generated)
+
+. gen pre_gdp = .
+(62,170 missing values generated)
+
+. gen sch_treat = .
+(62,170 missing values generated)
+
+. gen sch_pa = .
+(62,170 missing values generated)
+
+. gen sch_gdp = .
+(62,170 missing values generated)
+
+. forvalues c = 1980/1985 {
+  2.     local a0 = `c'
+  3.     local a1 = `c'+1
+  4.     local a2 = `c'+2
+  5.     local a3 = `c'+3
+  6.     local a4 = `c'+4
+  7.     local s1 = `c'+6
+  8.     local s2 = `c'+7
+  9.     local s3 = `c'+8
+ 10.     local s4 = `c'+9
+ 11.     local s5 = `c'+10
+ 12.     local s6 = `c'+11
+ 13.     local s7 = `c'+12
+ 14.     replace pre_treat = (days_lost_`a0'+days_lost_`a1'+days_lost_`a2'+days
+> _lost_`a3'+days_lost_`a4')/10 if cohort==`c'
+ 15.     replace pre_pa    = (dlpa_`a0'+dlpa_`a1'+dlpa_`a2'+dlpa_`a3'+dlpa_`a4'
+> )/10 if cohort==`c'
+ 16.     replace pre_gdp   = (pbgpc`a0'+pbgpc`a1'+pbgpc`a2'+pbgpc`a3'+pbgpc`a4'
+> )/5 if cohort==`c'
+ 17.     replace sch_treat = (days_lost_`s1'+days_lost_`s2'+days_lost_`s3'+days
+> _lost_`s4'+days_lost_`s5'+days_lost_`s6'+days_lost_`s7')/10 if cohort==`c'
+ 18.     replace sch_pa    = (dlpa_`s1'+dlpa_`s2'+dlpa_`s3'+dlpa_`s4'+dlpa_`s5'
+> +dlpa_`s6'+dlpa_`s7')/10 if cohort==`c'
+ 19.     replace sch_gdp   = (pbgpc`s1'+pbgpc`s2'+pbgpc`s3'+pbgpc`s4'+pbgpc`s5'
+> +pbgpc`s6'+pbgpc`s7')/7 if cohort==`c'
+ 20. }
+(19,592 real changes made)
+(19,592 real changes made)
+(19,087 real changes made)
+(19,592 real changes made)
+(19,592 real changes made)
+(19,087 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(14,891 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(14,891 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(11,753 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(11,753 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(8,082 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(8,082 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(4,965 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(4,965 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+(1,717 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+(1,717 real changes made)
+
+. rename cohort birthyear
+
+. keep if inrange(age,30,40)
+(0 observations deleted)
+
+. tempfile hbase
+
+. save `hbase'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002h.tmp saved as .dta format
+
+. 
+. foreach g in 0 1 {
+  2.     use `hbase', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) pre_treat sch_treat sch_pa sch_gdp pre_pa p
+> re_gdp aedu index1 log_wage ila_tot unemployed nini [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "pre_treat sch_treat i.surveyyear i.birthyear i.province i.b
+> irthyear*surveyyear i.province*surveyyear sch_pa sch_gdp pre_pa pre_gdp"
+  8.     robust_export, outfile("$tables/Table7_PH_`suffix'.csv") ///
+>         vars("aedu index1 log_wage ila_tot unemployed nini") rhs("`rhs'") kee
+> p("pre_treat")
+  9. }
+(30,231 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PH_FemS.csv)
+(31,939 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table7_PH_MalS.csv)
+
+. 
+. * --------------------------- *
+. * Table 8: young cohorts block *
+. * --------------------------- *
+. use "$proc/analysis_sample_young.dta", clear
+
+. rename birthyear cohort
+
+. drop treatment pa_days_lost
+
+. gen treatment = .
+(1,005,847 missing values generated)
+
+. gen pa_days_lost = .
+(1,005,847 missing values generated)
+
+. forvalues c = 1986/2003 {
+  2.     local y1 = `c'+6
+  3.     local y2 = `c'+7
+  4.     local y3 = `c'+8
+  5.     local y4 = `c'+9
+  6.     local y5 = `c'+10
+  7.     local y6 = `c'+11
+  8.     replace treatment = (days_lost_`y1'+days_lost_`y2'+days_lost_`y3'+days
+> _lost_`y4'+days_lost_`y5'+days_lost_`y6')/10 if cohort==`c'
+  9.     replace pa_days_lost = (dlpa_`y1'+dlpa_`y2'+dlpa_`y3'+dlpa_`y4'+dlpa_`
+> y5'+dlpa_`y6') if cohort==`c'
+ 10. }
+(43,257 real changes made)
+(43,257 real changes made)
+(45,689 real changes made)
+(45,689 real changes made)
+(45,451 real changes made)
+(45,451 real changes made)
+(46,276 real changes made)
+(46,276 real changes made)
+(48,093 real changes made)
+(48,093 real changes made)
+(49,385 real changes made)
+(49,385 real changes made)
+(49,958 real changes made)
+(49,958 real changes made)
+(47,924 real changes made)
+(47,924 real changes made)
+(46,584 real changes made)
+(46,584 real changes made)
+(48,124 real changes made)
+(48,124 real changes made)
+(47,888 real changes made)
+(47,888 real changes made)
+(45,194 real changes made)
+(45,194 real changes made)
+(40,432 real changes made)
+(40,432 real changes made)
+(36,228 real changes made)
+(36,228 real changes made)
+(33,573 real changes made)
+(33,573 real changes made)
+(29,410 real changes made)
+(29,410 real changes made)
+(23,696 real changes made)
+(23,696 real changes made)
+(20,397 real changes made)
+(20,397 real changes made)
+
+. rename cohort birthyear
+
+. keep if inrange(birthyear,1991,2003)
+(487,054 observations deleted)
+
+. tempfile young
+
+. save `young'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002i.tmp saved as .dta format
+
+. 
+. foreach g in 0 1 {
+  2.     use `young', clear
+  3.     keep if male==`g' & inrange(age,12,17)
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     replace asiste = 1 if aedu>=12
+  6.     gen drop_out = (asiste==0 & aedu<12)
+  7.     replace drop_out = 0 if asiste==1
+  8.     forvalues q = 1/4 {
+  9.         gen tq_`q' = cond(qipcf_prov==`q', treatment, 0)
+ 10.     }
+ 11.     forvalues e = 1/5 {
+ 12.         gen te_`e' = cond(max_edu_parents==`e', treatment, 0)
+ 13.     }
+ 14.     egen cid = group(province)
+ 15. 
+.     local c1 "treatment i.surveyyear i.birthyear i.province i.birthyear*surve
+> yyear i.province*surveyyear pa_days_lost"
+ 16.     local c2 "treatment i.surveyyear i.birthyear i.province i.birthyear*su
+> rveyyear i.province*surveyyear av_wage unemp i.qipcf i.max_edu_parents pa_day
+> s_lost"
+ 17.     local c3 "i.surveyyear i.birthyear i.province i.birthyear*surveyyear i
+> .province*surveyyear av_wage unemp i.max_edu_parents te_* pa_days_lost"
+ 18.     local c4 "i.surveyyear i.birthyear i.province i.birthyear*surveyyear i
+> .province*surveyyear av_wage unemp i.qipcf tq_* pa_days_lost"
+ 19. 
+.     local t8m
+ 20.     local ta8m
+ 21.     foreach y in edu_pub aedu nini drop_out {
+ 22.         quietly xi: reg `y' `c1' [aw=pondera], cluster(cid)
+ 23.         estimates store `y'1
+ 24.         quietly xi: reg `y' `c2' [aw=pondera], cluster(cid)
+ 25.         estimates store `y'2
+ 26.         quietly xi: reg `y' `c3' [aw=pondera], cluster(cid)
+ 27.         estimates store `y'3
+ 28.         quietly xi: reg `y' `c4' [aw=pondera], cluster(cid)
+ 29.         estimates store `y'4
+ 30.         local t8m "`t8m' `y'1 `y'2"
+ 31.         local ta8m "`ta8m' `y'3 `y'4"
+ 32.     }
+ 33.     esttab `t8m' using "$tables/Table8_`suffix'_12_17.csv", csv replace no
+> omitted ///
+>         keep(treatment pa_days_lost _cons) mtitles se star(* 0.10 ** 0.05 ***
+>  0.01) se(4) b(4)
+ 34.     esttab `ta8m' using "$appendix/TA8_`suffix'_12_17.csv", csv replace no
+> omitted ///
+>         keep(te_* tq_* pa_days_lost _cons) mtitles se star(* 0.10 ** 0.05 ***
+>  0.01) se(4) b(4)
+ 35.     estimates clear
+ 36. }
+(402,347 observations deleted)
+(665 real changes made)
+(0 real changes made)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table8_FemS_12_17.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA8_FemS_12_17.csv)
+(397,978 observations deleted)
+(613 real changes made)
+(0 real changes made)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/Table8_MalS_12_17.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA8_MalS_12_17.csv)
+
+. di "✓ 04_robustness.do complete"
+✓ 04_robustness.do complete
+
+. 
+end of do-file
+Running: 05_appendix.do
+
+. /*============================================================
+>   File:    05_appendix.do
+>   Role:    Appendix tables and Figure A1
+> ============================================================*/
+. 
+. version 16
+
+. clear
+
+. set more off
+
+. 
+. capture program drop app_export
+
+. program define app_export
+  1.     syntax , OUTFILE(string) VARS(string) RHS(string) KEEP(string)
+  2.     local ml
+  3.     foreach y of local vars {
+  4.         quietly xi: reg `y' `rhs' [aw=nobs], cluster(cid)
+  5.         estimates store a_`y'
+  6.         local ml "`ml' a_`y'"
+  7.     }
+  8.     esttab `ml' using "`outfile'", csv replace noomitted ///
+>         keep(`keep' _cons) mtitles se star(* 0.10 ** 0.05 *** 0.01) se(4) b(4
+> )
+  9.     estimates clear
+ 10. end
+
+. 
+. * TA1: stay-in-province share at age 13.
+. use "$proc/all_years.dta", clear
+
+. keep if edad==13
+(1,671,505 observations deleted)
+
+. gen stay = (old_provincia==provincia)
+
+. collapse (sum) nobs=pondera (mean) stay [aw=pondera], by(provincia)
+
+. gen stay_share = 100*stay
+
+. keep provincia stay_share
+
+. export excel using "$appendix/TA1.xls", replace firstrow(variables)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/table
+> s/appendix/TA1.xls saved
+
+. 
+. * TA2: weighted means by sex.
+. use "$proc/analysis_sample.dta", clear
+
+. collapse (sum) nobs ///
+>     (mean) sec_com aedu supc unemployed nilf nini informal_prod hstrt index1 
+> ///
+>     log_ila ila_tot log_wage independent casado nro_kids ipcf edu_partner ///
+>     kid_older2 parent_not_delayed parent_gap_aedu [aw=pondera], ///
+>     by(birthyear surveyyear province male)
+
+. preserve
+
+.     keep if male==1
+(2,567 observations deleted)
+
+.     collapse (mean) sec_com aedu supc unemployed nilf nini informal_prod hstr
+> t index1 ///
+>         log_ila ila_tot log_wage independent casado nro_kids ipcf edu_partner
+>  ///
+>         kid_older2 parent_not_delayed parent_gap_aedu [aw=nobs]
+
+.     gen sex = "Male"
+
+.     tempfile male_means
+
+.     save `male_means'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002f.tmp saved as .dta format
+
+. restore
+
+. keep if male==0
+(2,566 observations deleted)
+
+. collapse (mean) sec_com aedu supc unemployed nilf nini informal_prod hstrt in
+> dex1 ///
+>     log_ila ila_tot log_wage independent casado nro_kids ipcf edu_partner ///
+>     kid_older2 parent_not_delayed parent_gap_aedu [aw=nobs]
+
+. gen sex = "Female"
+
+. append using `male_means'
+
+. order sex
+
+. export excel using "$appendix/TA2.xls", replace firstrow(variables)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/table
+> s/appendix/TA2.xls saved
+
+. 
+. * TA3 and TA5 from alternative FE/control sets.
+. use "$proc/analysis_sample.dta", clear
+
+. tempfile base
+
+. save `base'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002g.tmp saved as .dta format
+
+. 
+. foreach g in 0 1 {
+  2.     use `base', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs ///
+>         (mean) treatment pa_days_lost pbi_pc ///
+>         sec_com supc aedu unemployed nilf nini log_ila log_wage ila_tot index
+> 1 hstrt informal_prod ///
+>         [aw=pondera], by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7. 
+.     local rhs_ta3 "treatment i.surveyyear*i.birthyear i.province*i.surveyyear
+>  pa_days_lost pbi_pc"
+  8.     app_export, outfile("$appendix/TA3PanelA_`suffix'.csv") vars("sec_com 
+> supc aedu") rhs("`rhs_ta3'") keep("treatment pa_days_lost pbi_pc")
+  9.     app_export, outfile("$appendix/TA3PanelB_`suffix'.csv") vars("unemploy
+> ed nilf nini") rhs("`rhs_ta3'") keep("treatment pa_days_lost pbi_pc")
+ 10.     app_export, outfile("$appendix/TA3PanelC_`suffix'.csv") vars("log_ila 
+> log_wage ila_tot") rhs("`rhs_ta3'") keep("treatment pa_days_lost pbi_pc")
+ 11.     app_export, outfile("$appendix/TA3PanelD_`suffix'.csv") vars("index1 h
+> strt informal_prod") rhs("`rhs_ta3'") keep("treatment pa_days_lost pbi_pc")
+ 12. 
+.     local rhs_a "treatment i.surveyyear i.birthyear i.province i.birthyear*su
+> rveyyear i.province*surveyyear"
+ 13.     local rhs_b "treatment i.surveyyear i.birthyear i.province i.birthyear
+> *surveyyear i.province*surveyyear pa_days_lost pbi_pc"
+ 14.     app_export, outfile("$appendix/TA5Panel_A_`suffix'.csv") vars("aedu in
+> dex1 log_wage ila_tot unemployed nini") rhs("`rhs_a'") keep("treatment")
+ 15.     app_export, outfile("$appendix/TA5Panel_B_`suffix'.csv") vars("aedu in
+> dex1 log_wage ila_tot unemployed nini") rhs("`rhs_b'") keep("treatment pa_day
+> s_lost pbi_pc")
+ 16. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelA_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelB_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelC_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelD_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA5Panel_A_FemS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA5Panel_B_FemS.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelA_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelB_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelC_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA3PanelD_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA5Panel_A_MalS.csv)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA5Panel_B_MalS.csv)
+
+. 
+. * TA6 local labor market predictors.
+. use "$proc/all_years.dta", clear
+
+. rename ano year
+
+. gen nobs = 1
+
+. gen tot_days_lost = .
+(1,717,770 missing values generated)
+
+. gen pa_days_lost = .
+(1,717,770 missing values generated)
+
+. forvalues y = 2003/2014 {
+  2.     replace tot_days_lost = days_lost_`y' if year==`y'
+  3.     replace pa_days_lost  = dlpa_`y' if year==`y'
+  4. }
+(61,257 real changes made)
+(61,257 real changes made)
+(123,740 real changes made)
+(123,740 real changes made)
+(123,029 real changes made)
+(123,029 real changes made)
+(146,110 real changes made)
+(146,110 real changes made)
+(123,750 real changes made)
+(123,750 real changes made)
+(162,152 real changes made)
+(162,152 real changes made)
+(157,441 real changes made)
+(157,441 real changes made)
+(154,054 real changes made)
+(154,054 real changes made)
+(149,734 real changes made)
+(149,734 real changes made)
+(143,826 real changes made)
+(143,826 real changes made)
+(141,615 real changes made)
+(141,615 real changes made)
+(154,576 real changes made)
+(154,576 real changes made)
+
+. keep if inrange(edad,41,50)
+(1,465,394 observations deleted)
+
+. collapse (sum) nobs (mean) tot_days_lost pa_days_lost desocupa wage ipcf [aw=
+> pondera], by(provincia year)
+
+. egen cid = group(provincia)
+
+. replace desocupa = 100*desocupa
+(308 real changes made)
+
+. xi: reg tot_days_lost desocupa wage ipcf [aw=nobs], cluster(cid)
+(sum of wgt is 240,780)
+
+Linear regression                               Number of obs     =        288
+                                                F(3, 23)          =       4.13
+                                                Prob > F          =     0.0175
+                                                R-squared         =     0.0602
+                                                Root MSE          =     8.5524
+
+                                   (Std. err. adjusted for 24 clusters in cid)
+------------------------------------------------------------------------------
+             |               Robust
+tot_days_l~t | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+    desocupa |   .9793765   .3299524     2.97   0.007      .296818    1.661935
+        wage |  -.6502573   .3333542    -1.95   0.063    -1.339853    .0393385
+        ipcf |   .0037472   .0017029     2.20   0.038     .0002245    .0072699
+       _cons |   4.094932   2.510602     1.63   0.116    -1.098644    9.288508
+------------------------------------------------------------------------------
+
+. estimates store l1
+
+. xi: reg tot_days_lost pa_days_lost desocupa wage ipcf i.provincia i.year i.pr
+> ovincia*year [aw=nobs], cluster(cid)
+i.provincia       _Iprovincia_1-24    (naturally coded; _Iprovincia_1 omitted)
+i.year            _Iyear_2003-2015    (naturally coded; _Iyear_2003 omitted)
+i.provin~a*year   _IproXyear_#        (coded as above)
+(sum of wgt is 240,780)
+note: _Iprovincia_4 omitted because of collinearity.
+note: _Iprovincia_6 omitted because of collinearity.
+note: _Iprovincia_8 omitted because of collinearity.
+note: _Iprovincia_10 omitted because of collinearity.
+note: _Iprovincia_12 omitted because of collinearity.
+note: _Iprovincia_15 omitted because of collinearity.
+note: _Iprovincia_17 omitted because of collinearity.
+note: _Iprovincia_21 omitted because of collinearity.
+note: _Iprovincia_23 omitted because of collinearity.
+note: _Iprovincia_24 omitted because of collinearity.
+note: _Iyear_2014 omitted because of collinearity.
+note: _Iyear_2015 omitted because of collinearity.
+note: _Iprovincia_2 omitted because of collinearity.
+note: _Iprovincia_3 omitted because of collinearity.
+note: _Iprovincia_5 omitted because of collinearity.
+note: _Iprovincia_7 omitted because of collinearity.
+note: _Iprovincia_9 omitted because of collinearity.
+note: _Iprovincia_11 omitted because of collinearity.
+note: _Iprovincia_13 omitted because of collinearity.
+note: _Iprovincia_14 omitted because of collinearity.
+note: _Iprovincia_16 omitted because of collinearity.
+note: _Iprovincia_18 omitted because of collinearity.
+note: _Iprovincia_19 omitted because of collinearity.
+note: _Iprovincia_20 omitted because of collinearity.
+note: _Iprovincia_22 omitted because of collinearity.
+
+Linear regression                               Number of obs     =        288
+                                                F(13, 23)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.4449
+                                                Root MSE          =     7.3684
+
+                                   (Std. err. adjusted for 24 clusters in cid)
+------------------------------------------------------------------------------
+             |               Robust
+tot_days_l~t | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+pa_days_lost |   .4877165   .1735988     2.81   0.010        .1286    .8468331
+    desocupa |   1.080726   .7220656     1.50   0.148    -.4129802    2.574433
+        wage |  -.1648466     .43888    -0.38   0.711    -1.072739    .7430458
+        ipcf |  -.0067948   .0043592    -1.56   0.133    -.0158126     .002223
+_Iprovinc~_2 |   2354.387   555.1431     4.24   0.000     1205.986    3502.788
+_Iprovinc~_3 |   3083.023   498.2838     6.19   0.000     2052.244    4113.802
+_Iprovinc~_4 |          0  (omitted)
+_Iprovinc~_5 |   619.5534   665.2869     0.93   0.361    -756.6974    1995.804
+_Iprovinc~_6 |          0  (omitted)
+_Iprovinc~_7 |   3132.033   450.5336     6.95   0.000     2200.033    4064.033
+_Iprovinc~_8 |          0  (omitted)
+_Iprovinc~_9 |   2682.914   178.9778    14.99   0.000      2312.67    3053.158
+_Iprovinc~10 |          0  (omitted)
+_Iprovinc~11 |   1836.379   400.8907     4.58   0.000     1007.073    2665.684
+_Iprovinc~12 |          0  (omitted)
+_Iprovinc~13 |    2956.74   331.3399     8.92   0.000     2271.311    3642.168
+_Iprovinc~14 |    1687.56   235.8532     7.16   0.000      1199.66    2175.459
+_Iprovinc~15 |          0  (omitted)
+_Iprovinc~16 |   4582.208   553.0027     8.29   0.000     3438.234    5726.181
+_Iprovinc~17 |          0  (omitted)
+_Iprovinc~18 |   3685.642   549.9344     6.70   0.000     2548.016    4823.268
+_Iprovinc~19 |   4145.455   332.3987    12.47   0.000     3457.836    4833.074
+_Iprovinc~20 |   1511.905   985.6077     1.53   0.139    -526.9796     3550.79
+_Iprovinc~21 |          0  (omitted)
+_Iprovinc~22 |    4569.22   433.1867    10.55   0.000     3673.105    5465.335
+_Iprovinc~23 |          0  (omitted)
+_Iprovinc~24 |          0  (omitted)
+ _Iyear_2004 |  -.3518274   1.683987    -0.21   0.836     -3.83542    3.131765
+ _Iyear_2005 |   .1662557   3.469075     0.05   0.962    -7.010073    7.342584
+ _Iyear_2006 |   -2.60997   2.334785    -1.12   0.275    -7.439841    2.219901
+ _Iyear_2007 |   .9510511   2.543616     0.37   0.712    -4.310819    6.212921
+ _Iyear_2008 |  -3.889515   2.541763    -1.53   0.140    -9.147552    1.368522
+ _Iyear_2009 |  -6.050977   2.962773    -2.04   0.053    -12.17994    .0779853
+ _Iyear_2010 |  -8.227272   3.119972    -2.64   0.015    -14.68143   -1.773117
+ _Iyear_2011 |  -7.703408   3.068104    -2.51   0.020    -14.05026   -1.356552
+ _Iyear_2012 |  -5.968869    2.30085    -2.59   0.016    -10.72854   -1.209199
+ _Iyear_2013 |   -1.73292   2.953998    -0.59   0.563    -7.843731    4.377891
+ _Iyear_2014 |          0  (omitted)
+ _Iyear_2015 |          0  (omitted)
+_Iprovinc~_2 |          0  (omitted)
+_Iprovinc~_3 |          0  (omitted)
+_Iprovinc~_4 |  -4543.395   610.4817    -7.44   0.000    -5806.273   -3280.518
+_Iprovinc~_5 |          0  (omitted)
+_Iprovinc~_6 |   3790.561   326.0459    11.63   0.000     3116.084    4465.039
+_Iprovinc~_7 |          0  (omitted)
+_Iprovinc~_8 |     6345.2   335.1193    18.93   0.000     5651.953    7038.447
+_Iprovinc~_9 |          0  (omitted)
+_Iprovinc~10 |   3103.294   521.8293     5.95   0.000     2023.808     4182.78
+_Iprovinc~11 |          0  (omitted)
+_Iprovinc~12 |   3753.987   364.7385    10.29   0.000     2999.468    4508.506
+_Iprovinc~13 |          0  (omitted)
+_Iprovinc~14 |          0  (omitted)
+_Iprovinc~15 |  -1524.793   578.2513    -2.64   0.015    -2720.997   -328.5891
+_Iprovinc~16 |          0  (omitted)
+_Iprovinc~17 |   3917.574   245.9689    15.93   0.000     3408.749      4426.4
+_Iprovinc~18 |          0  (omitted)
+_Iprovinc~19 |          0  (omitted)
+_Iprovinc~20 |          0  (omitted)
+_Iprovinc~21 |   1932.367   113.9762    16.95   0.000     1696.589    2168.145
+_Iprovinc~22 |          0  (omitted)
+_Iprovinc~23 |   593.1938   1086.257     0.55   0.590    -1653.901    2840.288
+_Iprovinc~24 |   2841.888   462.2612     6.15   0.000     1885.628    3798.148
+        year |   3.019313   .7728428     3.91   0.001     1.420566     4.61806
+_IproXyear_2 |  -1.171326   .2762441    -4.24   0.000    -1.742781   -.5998719
+_IproXyear_3 |  -1.535338   .2487071    -6.17   0.000    -2.049828   -1.020848
+_IproXyear_4 |   2.266062   .3041835     7.45   0.000      1.63681    2.895314
+_IproXyear_5 |  -.3075493    .332452    -0.93   0.365    -.9952786    .3801799
+_IproXyear_6 |  -1.888481   .1622424   -11.64   0.000    -2.224105   -1.552857
+_IproXyear_7 |  -1.559903   .2244983    -6.95   0.000    -2.024313   -1.095493
+_IproXyear_8 |  -3.156963   .1664916   -18.96   0.000    -3.501377   -2.812549
+_IproXyear_9 |   -1.33816   .0898286   -14.90   0.000    -1.523984   -1.152335
+_IproXyea~10 |  -1.546493   .2600511    -5.95   0.000     -2.08445   -1.008536
+_IproXyea~11 |  -.9147432   .1996135    -4.58   0.000    -1.327675   -.5018113
+_IproXyea~12 |  -1.870782   .1815501   -10.30   0.000    -2.246347   -1.495216
+_IproXyea~13 |  -1.473896   .1643225    -8.97   0.000    -1.813823   -1.133969
+_IproXyea~14 |  -.8429081   .1170761    -7.20   0.000    -1.085098   -.6007178
+_IproXyea~15 |   .7649483   .2881591     2.65   0.014     .1688458    1.361051
+_IproXyea~16 |   -2.27935   .2747321    -8.30   0.000    -2.847677   -1.711023
+_IproXyea~17 |  -1.951082   .1225801   -15.92   0.000    -2.204659   -1.697506
+_IproXyea~18 |  -1.837426   .2738739    -6.71   0.000    -2.403978   -1.270875
+_IproXyea~19 |  -2.063872   .1646264   -12.54   0.000    -2.404428   -1.723317
+_IproXyea~20 |  -.7465704   .4910449    -1.52   0.142    -1.762374    .2692333
+_IproXyea~21 |  -.9630813    .056612   -17.01   0.000    -1.080192   -.8459704
+_IproXyea~22 |  -2.277084   .2159277   -10.55   0.000    -2.723765   -1.830404
+_IproXyea~23 |  -.2898384    .542074    -0.53   0.598    -1.411204    .8315272
+_IproXyea~24 |  -1.418156   .2300781    -6.16   0.000    -1.894109   -.9422035
+       _cons |  -6050.989   1548.265    -3.91   0.001    -9253.819   -2848.159
+------------------------------------------------------------------------------
+
+. estimates store l2
+
+. esttab l1 l2 using "$appendix/TA6_local_labor_markets.csv", csv replace noomi
+> tted ///
+>     keep(pa_days_lost desocupa wage ipcf _cons) mtitles se star(* 0.10 ** 0.0
+> 5 *** 0.01) se(4) b(4) r2
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA6_local_labor_markets.csv)
+
+. estimates clear
+
+. 
+. * TA7 + Figure A1.
+. use "$raw/Teacher_wages_and_strikes.dta", clear
+
+. gen inflation = .
+(1,307 missing values generated)
+
+. replace inflation = 1 if year==1995
+(25 real changes made)
+
+. replace inflation = 1.001556769 if year==1996
+(25 real changes made)
+
+. replace inflation = 1.006850878 if year==1997
+(25 real changes made)
+
+. replace inflation = 1.016160876 if year==1998
+(25 real changes made)
+
+. replace inflation = 1.004305547 if year==1999
+(25 real changes made)
+
+. replace inflation = 0.994874047 if year==2000
+(25 real changes made)
+
+. replace inflation = 0.984273636 if year==2001
+(25 real changes made)
+
+. replace inflation = 1.238890895 if year==2002
+(25 real changes made)
+
+. replace inflation = 1.405436795 if year==2003
+(25 real changes made)
+
+. replace inflation = 1.467500698 if year==2004
+(25 real changes made)
+
+. replace inflation = 1.609002954 if year==2005
+(25 real changes made)
+
+. replace inflation = 1.784326972 if year==2006
+(25 real changes made)
+
+. replace inflation = 2.07803654 if year==2007
+(25 real changes made)
+
+. replace inflation = 2.579663032 if year==2008
+(25 real changes made)
+
+. replace inflation = 3.01975879 if year==2009
+(25 real changes made)
+
+. gen real_wage = Wage/inflation
+(947 missing values generated)
+
+. sort provincia year
+
+. gen wage_l1 = real_wage[_n-1] if provincia==provincia[_n-1]
+(947 missing values generated)
+
+. gen wage_f1 = real_wage[_n+1] if provincia==provincia[_n+1]
+(947 missing values generated)
+
+. gen wage_change_96_09 = (real_wage[_n]-real_wage[_n-13])/real_wage[_n-13]*100
+>  if provincia==provincia[_n-13] & year==2009
+(1,283 missing values generated)
+
+. egen strike_sum_96_09 = sum(days_teacher_strike) if inrange(year,1996,2009), 
+> by(province)
+(957 missing values generated)
+
+. twoway (scatter wage_change_96_09 strike_sum_96_09 if strike_sum_96_09>50) //
+> /
+>        (lfit wage_change_96_09 strike_sum_96_09 if strike_sum_96_09>50), ///
+>        xtitle("Total strike days (1996-2009)") ///
+>        ytitle("Change in teacher real wages (1996-2009)") ///
+>        legend(off) graphregion(color(white))
+
+. graph export "$figures/FigureA1.png", replace width(2400)
+file c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/output/figur
+> es/FigureA1.png written in PNG format
+
+. xi: reg days_teacher_strike real_wage wage_l1 wage_f1, cluster(province)
+
+Linear regression                               Number of obs     =        312
+                                                F(3, 23)          =       1.51
+                                                Prob > F          =     0.2393
+                                                R-squared         =     0.0179
+                                                Root MSE          =     12.251
+
+                              (Std. err. adjusted for 24 clusters in province)
+------------------------------------------------------------------------------
+             |               Robust
+days_teach~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+   real_wage |   .0101909   .0125846     0.81   0.426    -.0158423    .0362242
+     wage_l1 |   .0102881   .0133362     0.77   0.448       -.0173    .0378762
+     wage_f1 |  -.0176903   .0114311    -1.55   0.135    -.0413373    .0059567
+       _cons |   8.292757   2.652671     3.13   0.005     2.805289    13.78022
+------------------------------------------------------------------------------
+
+. estimates store w1
+
+. xi: reg days_teacher_strike real_wage wage_l1 wage_f1 i.province i.year i.pro
+> vince*year days_pa_strike, cluster(province)
+i.province        _Iprovince_1-49     (_Iprovince_1 for province==BUE omitted)
+i.year            _Iyear_1961-2014    (naturally coded; _Iyear_1961 omitted)
+i.province*year   _IproXyear_#        (coded as above)
+note: _Iprovince_2 omitted because of collinearity.
+note: _Iprovince_3 omitted because of collinearity.
+note: _Iprovince_4 omitted because of collinearity.
+note: _Iprovince_5 omitted because of collinearity.
+note: _Iprovince_6 omitted because of collinearity.
+note: _Iprovince_7 omitted because of collinearity.
+note: _Iprovince_8 omitted because of collinearity.
+note: _Iprovince_9 omitted because of collinearity.
+note: _Iprovince_11 omitted because of collinearity.
+note: _Iprovince_15 omitted because of collinearity.
+note: _Iprovince_16 omitted because of collinearity.
+note: _Iprovince_17 omitted because of collinearity.
+note: _Iprovince_19 omitted because of collinearity.
+note: _Iprovince_21 omitted because of collinearity.
+note: _Iprovince_22 omitted because of collinearity.
+note: _Iprovince_24 omitted because of collinearity.
+note: _Iprovince_25 omitted because of collinearity.
+note: _Iprovince_26 omitted because of collinearity.
+note: _Iprovince_27 omitted because of collinearity.
+note: _Iprovince_28 omitted because of collinearity.
+note: _Iprovince_29 omitted because of collinearity.
+note: _Iprovince_30 omitted because of collinearity.
+note: _Iprovince_31 omitted because of collinearity.
+note: _Iprovince_32 omitted because of collinearity.
+note: _Iprovince_34 omitted because of collinearity.
+note: _Iprovince_35 omitted because of collinearity.
+note: _Iprovince_36 omitted because of collinearity.
+note: _Iprovince_37 omitted because of collinearity.
+note: _Iprovince_38 omitted because of collinearity.
+note: _Iprovince_39 omitted because of collinearity.
+note: _Iprovince_44 omitted because of collinearity.
+note: _Iprovince_45 omitted because of collinearity.
+note: _Iprovince_47 omitted because of collinearity.
+note: _Iprovince_48 omitted because of collinearity.
+note: _Iyear_1962 omitted because of collinearity.
+note: _Iyear_1963 omitted because of collinearity.
+note: _Iyear_1964 omitted because of collinearity.
+note: _Iyear_1965 omitted because of collinearity.
+note: _Iyear_1966 omitted because of collinearity.
+note: _Iyear_1967 omitted because of collinearity.
+note: _Iyear_1968 omitted because of collinearity.
+note: _Iyear_1969 omitted because of collinearity.
+note: _Iyear_1970 omitted because of collinearity.
+note: _Iyear_1971 omitted because of collinearity.
+note: _Iyear_1972 omitted because of collinearity.
+note: _Iyear_1973 omitted because of collinearity.
+note: _Iyear_1974 omitted because of collinearity.
+note: _Iyear_1975 omitted because of collinearity.
+note: _Iyear_1976 omitted because of collinearity.
+note: _Iyear_1977 omitted because of collinearity.
+note: _Iyear_1978 omitted because of collinearity.
+note: _Iyear_1979 omitted because of collinearity.
+note: _Iyear_1980 omitted because of collinearity.
+note: _Iyear_1981 omitted because of collinearity.
+note: _Iyear_1982 omitted because of collinearity.
+note: _Iyear_1983 omitted because of collinearity.
+note: _Iyear_1984 omitted because of collinearity.
+note: _Iyear_1985 omitted because of collinearity.
+note: _Iyear_1986 omitted because of collinearity.
+note: _Iyear_1987 omitted because of collinearity.
+note: _Iyear_1988 omitted because of collinearity.
+note: _Iyear_1989 omitted because of collinearity.
+note: _Iyear_1990 omitted because of collinearity.
+note: _Iyear_1991 omitted because of collinearity.
+note: _Iyear_1992 omitted because of collinearity.
+note: _Iyear_1993 omitted because of collinearity.
+note: _Iyear_1994 omitted because of collinearity.
+note: _Iyear_1995 omitted because of collinearity.
+note: _Iyear_1996 omitted because of collinearity.
+note: _Iyear_2008 omitted because of collinearity.
+note: _Iyear_2009 omitted because of collinearity.
+note: _Iyear_2010 omitted because of collinearity.
+note: _Iyear_2011 omitted because of collinearity.
+note: _Iyear_2012 omitted because of collinearity.
+note: _Iyear_2013 omitted because of collinearity.
+note: _Iyear_2014 omitted because of collinearity.
+note: _Iprovince_3 omitted because of collinearity.
+note: _Iprovince_4 omitted because of collinearity.
+note: _Iprovince_5 omitted because of collinearity.
+note: _Iprovince_6 omitted because of collinearity.
+note: _Iprovince_7 omitted because of collinearity.
+note: _Iprovince_8 omitted because of collinearity.
+note: _Iprovince_10 omitted because of collinearity.
+note: _Iprovince_11 omitted because of collinearity.
+note: _Iprovince_12 omitted because of collinearity.
+note: _Iprovince_13 omitted because of collinearity.
+note: _Iprovince_14 omitted because of collinearity.
+note: _Iprovince_15 omitted because of collinearity.
+note: _Iprovince_17 omitted because of collinearity.
+note: _Iprovince_18 omitted because of collinearity.
+note: _Iprovince_19 omitted because of collinearity.
+note: _Iprovince_20 omitted because of collinearity.
+note: _Iprovince_21 omitted because of collinearity.
+note: _Iprovince_22 omitted because of collinearity.
+note: _Iprovince_23 omitted because of collinearity.
+note: _Iprovince_25 omitted because of collinearity.
+note: _Iprovince_26 omitted because of collinearity.
+note: _Iprovince_29 omitted because of collinearity.
+note: _Iprovince_30 omitted because of collinearity.
+note: _Iprovince_32 omitted because of collinearity.
+note: _Iprovince_33 omitted because of collinearity.
+note: _Iprovince_34 omitted because of collinearity.
+note: _Iprovince_35 omitted because of collinearity.
+note: _Iprovince_36 omitted because of collinearity.
+note: _Iprovince_37 omitted because of collinearity.
+note: _Iprovince_38 omitted because of collinearity.
+note: _Iprovince_39 omitted because of collinearity.
+note: _Iprovince_40 omitted because of collinearity.
+note: _Iprovince_41 omitted because of collinearity.
+note: _Iprovince_42 omitted because of collinearity.
+note: _Iprovince_43 omitted because of collinearity.
+note: _Iprovince_46 omitted because of collinearity.
+note: _Iprovince_47 omitted because of collinearity.
+note: _Iprovince_48 omitted because of collinearity.
+note: _Iprovince_49 omitted because of collinearity.
+note: _IproXyear_3 omitted because of collinearity.
+note: _IproXyear_4 omitted because of collinearity.
+note: _IproXyear_5 omitted because of collinearity.
+note: _IproXyear_6 omitted because of collinearity.
+note: _IproXyear_7 omitted because of collinearity.
+note: _IproXyear_8 omitted because of collinearity.
+note: _IproXyear_14 omitted because of collinearity.
+note: _IproXyear_15 omitted because of collinearity.
+note: _IproXyear_17 omitted because of collinearity.
+note: _IproXyear_19 omitted because of collinearity.
+note: _IproXyear_21 omitted because of collinearity.
+note: _IproXyear_22 omitted because of collinearity.
+note: _IproXyear_25 omitted because of collinearity.
+note: _IproXyear_26 omitted because of collinearity.
+note: _IproXyear_29 omitted because of collinearity.
+note: _IproXyear_30 omitted because of collinearity.
+note: _IproXyear_32 omitted because of collinearity.
+note: _IproXyear_34 omitted because of collinearity.
+note: _IproXyear_35 omitted because of collinearity.
+note: _IproXyear_36 omitted because of collinearity.
+note: _IproXyear_37 omitted because of collinearity.
+note: _IproXyear_38 omitted because of collinearity.
+note: _IproXyear_39 omitted because of collinearity.
+note: _IproXyear_47 omitted because of collinearity.
+note: _IproXyear_48 omitted because of collinearity.
+
+Linear regression                               Number of obs     =        312
+                                                F(14, 23)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.5693
+                                                Root MSE          =     9.0224
+
+                              (Std. err. adjusted for 24 clusters in province)
+------------------------------------------------------------------------------
+             |               Robust
+days_teach~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+   real_wage |  -.0119313   .0130321    -0.92   0.369    -.0388902    .0150276
+     wage_l1 |   .0228946   .0212215     1.08   0.292    -.0210055    .0667947
+     wage_f1 |   .0272174   .0174345     1.56   0.132    -.0088486    .0632834
+_Iprovince_2 |          0  (omitted)
+_Iprovince_3 |          0  (omitted)
+_Iprovince_4 |          0  (omitted)
+_Iprovince_5 |          0  (omitted)
+_Iprovince_6 |          0  (omitted)
+_Iprovince_7 |          0  (omitted)
+_Iprovince_8 |          0  (omitted)
+_Iprovince_9 |          0  (omitted)
+_Iprovinc~10 |   -765.858   358.4957    -2.14   0.044    -1507.463   -24.25323
+_Iprovinc~11 |          0  (omitted)
+_Iprovinc~12 |  -761.3842   614.0093    -1.24   0.227    -2031.559    508.7909
+_Iprovinc~13 |  -1042.804   452.2234    -2.31   0.030      -1978.3    -107.309
+_Iprovinc~14 |  -1722.164   836.6946    -2.06   0.051    -3452.999    8.670883
+_Iprovinc~15 |          0  (omitted)
+_Iprovinc~16 |          0  (omitted)
+_Iprovinc~17 |          0  (omitted)
+_Iprovinc~18 |  -720.2314   724.2615    -0.99   0.330    -2218.481    778.0178
+_Iprovinc~19 |          0  (omitted)
+_Iprovinc~20 |  -663.3351   676.7445    -0.98   0.337    -2063.288    736.6176
+_Iprovinc~21 |          0  (omitted)
+_Iprovinc~22 |          0  (omitted)
+_Iprovinc~23 |   1592.996    340.433     4.68   0.000     888.7569    2297.236
+_Iprovinc~24 |          0  (omitted)
+_Iprovinc~25 |          0  (omitted)
+_Iprovinc~26 |          0  (omitted)
+_Iprovinc~27 |          0  (omitted)
+_Iprovinc~28 |          0  (omitted)
+_Iprovinc~29 |          0  (omitted)
+_Iprovinc~30 |          0  (omitted)
+_Iprovinc~31 |          0  (omitted)
+_Iprovinc~32 |          0  (omitted)
+_Iprovinc~33 |  -358.5682   787.9107    -0.46   0.653    -1988.486    1271.349
+_Iprovinc~34 |          0  (omitted)
+_Iprovinc~35 |          0  (omitted)
+_Iprovinc~36 |          0  (omitted)
+_Iprovinc~37 |          0  (omitted)
+_Iprovinc~38 |          0  (omitted)
+_Iprovinc~39 |          0  (omitted)
+_Iprovinc~40 |  -2435.816   612.7479    -3.98   0.001    -3703.382   -1168.251
+_Iprovinc~41 |   86.41927   617.8979     0.14   0.890      -1191.8    1364.638
+_Iprovinc~42 |  -460.6586   459.3614    -1.00   0.326     -1410.92    489.6028
+_Iprovinc~43 |   -1419.01   922.2711    -1.54   0.138    -3326.873    488.8536
+_Iprovinc~44 |          0  (omitted)
+_Iprovinc~45 |          0  (omitted)
+_Iprovinc~46 |  -59.04133   486.1416    -0.12   0.904    -1064.702    946.6193
+_Iprovinc~47 |          0  (omitted)
+_Iprovinc~48 |          0  (omitted)
+_Iprovinc~49 |   762.3216   638.5822     1.19   0.245    -558.6863     2083.33
+ _Iyear_1962 |          0  (omitted)
+ _Iyear_1963 |          0  (omitted)
+ _Iyear_1964 |          0  (omitted)
+ _Iyear_1965 |          0  (omitted)
+ _Iyear_1966 |          0  (omitted)
+ _Iyear_1967 |          0  (omitted)
+ _Iyear_1968 |          0  (omitted)
+ _Iyear_1969 |          0  (omitted)
+ _Iyear_1970 |          0  (omitted)
+ _Iyear_1971 |          0  (omitted)
+ _Iyear_1972 |          0  (omitted)
+ _Iyear_1973 |          0  (omitted)
+ _Iyear_1974 |          0  (omitted)
+ _Iyear_1975 |          0  (omitted)
+ _Iyear_1976 |          0  (omitted)
+ _Iyear_1977 |          0  (omitted)
+ _Iyear_1978 |          0  (omitted)
+ _Iyear_1979 |          0  (omitted)
+ _Iyear_1980 |          0  (omitted)
+ _Iyear_1981 |          0  (omitted)
+ _Iyear_1982 |          0  (omitted)
+ _Iyear_1983 |          0  (omitted)
+ _Iyear_1984 |          0  (omitted)
+ _Iyear_1985 |          0  (omitted)
+ _Iyear_1986 |          0  (omitted)
+ _Iyear_1987 |          0  (omitted)
+ _Iyear_1988 |          0  (omitted)
+ _Iyear_1989 |          0  (omitted)
+ _Iyear_1990 |          0  (omitted)
+ _Iyear_1991 |          0  (omitted)
+ _Iyear_1992 |          0  (omitted)
+ _Iyear_1993 |          0  (omitted)
+ _Iyear_1994 |          0  (omitted)
+ _Iyear_1995 |          0  (omitted)
+ _Iyear_1996 |          0  (omitted)
+ _Iyear_1997 |   5.104969   1.950972     2.62   0.015     1.069076    9.140863
+ _Iyear_1998 |   3.374203   1.963431     1.72   0.099    -.6874633    7.435869
+ _Iyear_1999 |   .9893895   2.212782     0.45   0.659    -3.588099    5.566878
+ _Iyear_2000 |   1.468066   2.240002     0.66   0.519    -3.165731    6.101863
+ _Iyear_2001 |   10.06187   2.964568     3.39   0.002     3.929197    16.19455
+ _Iyear_2002 |   13.91973   5.919644     2.35   0.028     1.674009    26.16544
+ _Iyear_2003 |   6.694683   4.832107     1.39   0.179    -3.301293    16.69066
+ _Iyear_2004 |   7.156982   4.564294     1.57   0.131    -2.284979    16.59894
+ _Iyear_2005 |   9.076259   4.341401     2.09   0.048     .0953873    18.05713
+ _Iyear_2006 |   1.843183   3.052213     0.60   0.552    -4.470801    8.157166
+ _Iyear_2007 |   6.172402   2.308779     2.67   0.014     1.396329    10.94848
+ _Iyear_2008 |          0  (omitted)
+ _Iyear_2009 |          0  (omitted)
+ _Iyear_2010 |          0  (omitted)
+ _Iyear_2011 |          0  (omitted)
+ _Iyear_2012 |          0  (omitted)
+ _Iyear_2013 |          0  (omitted)
+ _Iyear_2014 |          0  (omitted)
+_Iprovince_2 |    551.987   499.6787     1.10   0.281    -481.6771    1585.651
+_Iprovince_3 |          0  (omitted)
+_Iprovince_4 |          0  (omitted)
+_Iprovince_5 |          0  (omitted)
+_Iprovince_6 |          0  (omitted)
+_Iprovince_7 |          0  (omitted)
+_Iprovince_8 |          0  (omitted)
+_Iprovince_9 |  -1107.901   1196.686    -0.93   0.364    -3583.435    1367.633
+_Iprovinc~10 |          0  (omitted)
+_Iprovinc~11 |          0  (omitted)
+_Iprovinc~12 |          0  (omitted)
+_Iprovinc~13 |          0  (omitted)
+_Iprovinc~14 |          0  (omitted)
+_Iprovinc~15 |          0  (omitted)
+_Iprovinc~16 |  -582.5447    444.113    -1.31   0.203    -1501.262     336.173
+_Iprovinc~17 |          0  (omitted)
+_Iprovinc~18 |          0  (omitted)
+_Iprovinc~19 |          0  (omitted)
+_Iprovinc~20 |          0  (omitted)
+_Iprovinc~21 |          0  (omitted)
+_Iprovinc~22 |          0  (omitted)
+_Iprovinc~23 |          0  (omitted)
+_Iprovinc~24 |   -2923.73   1852.588    -1.58   0.128    -6756.101     908.641
+_Iprovinc~25 |          0  (omitted)
+_Iprovinc~26 |          0  (omitted)
+_Iprovinc~27 |   -956.674    778.884    -1.23   0.232    -2567.918    654.5702
+_Iprovinc~28 |  -186.2576   739.9445    -0.25   0.803    -1716.949    1344.434
+_Iprovinc~29 |          0  (omitted)
+_Iprovinc~30 |          0  (omitted)
+_Iprovinc~31 |  -1447.617   914.8301    -1.58   0.127    -3340.088     444.853
+_Iprovinc~32 |          0  (omitted)
+_Iprovinc~33 |          0  (omitted)
+_Iprovinc~34 |          0  (omitted)
+_Iprovinc~35 |          0  (omitted)
+_Iprovinc~36 |          0  (omitted)
+_Iprovinc~37 |          0  (omitted)
+_Iprovinc~38 |          0  (omitted)
+_Iprovinc~39 |          0  (omitted)
+_Iprovinc~40 |          0  (omitted)
+_Iprovinc~41 |          0  (omitted)
+_Iprovinc~42 |          0  (omitted)
+_Iprovinc~43 |          0  (omitted)
+_Iprovinc~44 |    149.233   296.6753     0.50   0.620    -464.4866    762.9526
+_Iprovinc~45 |  -1804.219   1090.732    -1.65   0.112    -4060.571    452.1331
+_Iprovinc~46 |          0  (omitted)
+_Iprovinc~47 |          0  (omitted)
+_Iprovinc~48 |          0  (omitted)
+_Iprovinc~49 |          0  (omitted)
+        year |   .1921097   .3468799     0.55   0.585     -.525466    .9096855
+_IproXyear_2 |  -1.136218   .3478956    -3.27   0.003    -1.855895   -.4165412
+_IproXyear_3 |          0  (omitted)
+_IproXyear_4 |          0  (omitted)
+_IproXyear_5 |          0  (omitted)
+_IproXyear_6 |          0  (omitted)
+_IproXyear_7 |          0  (omitted)
+_IproXyear_8 |          0  (omitted)
+_IproXyear_9 |  -.3059581    .335095    -0.91   0.371    -.9991549    .3872388
+_IproXyea~10 |  -.4780134   .3915806    -1.22   0.235     -1.28806    .3320328
+_IproXyea~11 |  -.8613292   .4186255    -2.06   0.051    -1.727322    .0046637
+_IproXyea~12 |  -.4809603   .2373674    -2.03   0.054    -.9719922    .0100716
+_IproXyea~13 |  -.3437257   .2218316    -1.55   0.135    -.8026194     .115168
+_IproXyea~14 |          0  (omitted)
+_IproXyea~15 |          0  (omitted)
+_IproXyea~16 |  -.5648759   .3916656    -1.44   0.163    -1.375098    .2453462
+_IproXyea~17 |          0  (omitted)
+_IproXyea~18 |  -.5003477   .2167356    -2.31   0.030    -.9486994   -.0519959
+_IproXyea~19 |          0  (omitted)
+_IproXyea~20 |  -.5268709   .1785008    -2.95   0.007    -.8961279   -.1576139
+_IproXyea~21 |          0  (omitted)
+_IproXyea~22 |          0  (omitted)
+_IproXyea~23 |  -1.658814   .4761048    -3.48   0.002    -2.643712   -.6739165
+_IproXyea~24 |   .5982246   .6545902     0.91   0.370    -.7558985    1.952348
+_IproXyea~25 |          0  (omitted)
+_IproXyea~26 |          0  (omitted)
+_IproXyea~27 |  -.3831079   .2307709    -1.66   0.110     -.860494    .0942782
+_IproXyea~28 |   -.766591   .1819184    -4.21   0.000    -1.142918   -.3902641
+_IproXyea~29 |          0  (omitted)
+_IproXyea~30 |          0  (omitted)
+_IproXyea~31 |  -.1385998   .2978997    -0.47   0.646    -.7548523    .4776526
+_IproXyea~32 |          0  (omitted)
+_IproXyea~33 |  -.6771191   .2493067    -2.72   0.012    -1.192849   -.1613889
+_IproXyea~34 |          0  (omitted)
+_IproXyea~35 |          0  (omitted)
+_IproXyea~36 |          0  (omitted)
+_IproXyea~37 |          0  (omitted)
+_IproXyea~38 |          0  (omitted)
+_IproXyea~39 |          0  (omitted)
+_IproXyea~40 |   .3581279   .1988082     1.80   0.085    -.0531382     .769394
+_IproXyea~41 |  -.9015924   .2175343    -4.14   0.000    -1.351596   -.4515883
+_IproXyea~42 |  -.6318747   .2356715    -2.68   0.013    -1.119398   -.1443511
+_IproXyea~43 |  -.1595038   .6427714    -0.25   0.806    -1.489178     1.17017
+_IproXyea~44 |  -.9362529   .3502116    -2.67   0.014    -1.660721   -.2117851
+_IproXyea~45 |   .0418395    .243342     0.17   0.865    -.4615517    .5452308
+_IproXyea~46 |  -.8373677   .3889605    -2.15   0.042    -1.641994   -.0327417
+_IproXyea~47 |          0  (omitted)
+_IproXyea~48 |          0  (omitted)
+_IproXyea~49 |   -1.23989   .2383555    -5.20   0.000    -1.732966   -.7468141
+days_pa_st~e |   1.056348   .1835834     5.75   0.000     .6765765    1.436119
+       _cons |   1316.541   1244.402     1.06   0.301      -1257.7    3890.782
+------------------------------------------------------------------------------
+
+. estimates store w2
+
+. esttab w1 w2 using "$appendix/TA7_Regressions_wages_strikes.csv", csv replace
+>  noomitted ///
+>     keep(real_wage wage_l1 wage_f1 _cons) mtitles se star(* 0.10 ** 0.05 *** 
+> 0.01) se(4) b(4) r2
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA7_Regressions_wages_strikes.csv)
+
+. estimates clear
+
+. 
+. * TA9: split treatment into primary and secondary windows.
+. use "$proc/edited_data.dta", clear
+
+. rename birthyear cohort
+
+. rename age age_years
+
+. drop treatment
+
+. gen treat_primary = .
+(377,568 missing values generated)
+
+. gen treat_secondary = .
+(377,568 missing values generated)
+
+. forvalues c = 1971/1995 {
+  2.     local p1 = `c'+6
+  3.     local p2 = `c'+7
+  4.     local p3 = `c'+8
+  5.     local p4 = `c'+9
+  6.     local p5 = `c'+10
+  7.     local p6 = `c'+11
+  8.     local p7 = `c'+12
+  9.     local s1 = `c'+13
+ 10.     local s2 = `c'+14
+ 11.     local s3 = `c'+15
+ 12.     local s4 = `c'+16
+ 13.     local s5 = `c'+17
+ 14.     replace treat_primary = (days_lost_`p1'+days_lost_`p2'+days_lost_`p3'+
+> days_lost_`p4'+days_lost_`p5'+days_lost_`p6'+days_lost_`p7')/10 if cohort==`c
+> '
+ 15.     replace treat_secondary = (days_lost_`s1'+days_lost_`s2'+days_lost_`s3
+> '+days_lost_`s4'+days_lost_`s5')/10 if cohort==`c' & age_years>=13
+ 16. }
+(21,940 real changes made)
+(21,940 real changes made)
+(25,279 real changes made)
+(25,279 real changes made)
+(27,572 real changes made)
+(27,572 real changes made)
+(30,206 real changes made)
+(30,206 real changes made)
+(31,283 real changes made)
+(31,283 real changes made)
+(29,987 real changes made)
+(29,987 real changes made)
+(27,587 real changes made)
+(27,587 real changes made)
+(25,821 real changes made)
+(25,821 real changes made)
+(22,498 real changes made)
+(22,498 real changes made)
+(19,592 real changes made)
+(19,592 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. gen pa_primary = .
+(377,568 missing values generated)
+
+. gen pa_secondary = .
+(377,568 missing values generated)
+
+. forvalues c = 1971/1985 {
+  2.     local p1 = `c'+6
+  3.     local p2 = `c'+7
+  4.     local p3 = `c'+8
+  5.     local p4 = `c'+9
+  6.     local p5 = `c'+10
+  7.     local p6 = `c'+11
+  8.     local p7 = `c'+12
+  9.     local s1 = `c'+13
+ 10.     local s2 = `c'+14
+ 11.     local s3 = `c'+15
+ 12.     local s4 = `c'+16
+ 13.     local s5 = `c'+17
+ 14.     replace pa_primary = (dlpa_`p1'+dlpa_`p2'+dlpa_`p3'+dlpa_`p4'+dlpa_`p5
+> '+dlpa_`p6'+dlpa_`p7')/10 if cohort==`c'
+ 15.     replace pa_secondary = (dlpa_`s1'+dlpa_`s2'+dlpa_`s3'+dlpa_`s4'+dlpa_`
+> s5')/10 if cohort==`c' & age_years>=13
+ 16. }
+(21,940 real changes made)
+(21,940 real changes made)
+(25,279 real changes made)
+(25,279 real changes made)
+(27,572 real changes made)
+(27,572 real changes made)
+(30,206 real changes made)
+(30,206 real changes made)
+(31,283 real changes made)
+(31,283 real changes made)
+(29,987 real changes made)
+(29,987 real changes made)
+(27,587 real changes made)
+(27,587 real changes made)
+(25,821 real changes made)
+(25,821 real changes made)
+(22,498 real changes made)
+(22,498 real changes made)
+(19,592 real changes made)
+(19,592 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+
+. rename cohort birthyear
+
+. rename age_years age
+
+. keep if inrange(age,30,40)
+(0 observations deleted)
+
+. drop if treat_primary==.
+(73,225 observations deleted)
+
+. tempfile ta9
+
+. save `ta9'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002h.tmp saved as .dta format
+
+. foreach g in 0 1 {
+  2.     use `ta9', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treat_primary treat_secondary pa_primary pa
+> _secondary aedu unemployed nini log_wage ila_tot index1 [aw=pondera], ///
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "treat_primary treat_secondary pa_primary pa_secondary i.sur
+> veyyear i.birthyear i.province i.birthyear*surveyyear i.province*surveyyear"
+  8.     app_export, outfile("$appendix/TA9`suffix'.csv") vars("aedu index1 log
+> _wage ila_tot unemployed nini") rhs("`rhs'") keep("treat_primary treat_second
+> ary")
+  9. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA9FemS.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA9MalS.csv)
+
+. 
+. * TA10: treatment intensity vs duration.
+. use "$proc/edited_data.dta", clear
+
+. rename birthyear cohort
+
+. forvalues y = 1977/1982 {
+  2.     capture gen n_strike_`y' = 0
+  3.     capture gen ns_public_ad_`y' = 0
+  4. }
+
+. gen n_strike_total = .
+(377,568 missing values generated)
+
+. gen n_pa_total = .
+(377,568 missing values generated)
+
+. forvalues c = 1971/1995 {
+  2.     local s1 = `c'+6
+  3.     local s2 = `c'+7
+  4.     local s3 = `c'+8
+  5.     local s4 = `c'+9
+  6.     local s5 = `c'+10
+  7.     local s6 = `c'+11
+  8.     local s7 = `c'+12
+  9.     replace n_strike_total = n_strike_`s1'+n_strike_`s2'+n_strike_`s3'+n_s
+> trike_`s4'+n_strike_`s5'+n_strike_`s6'+n_strike_`s7' if cohort==`c'
+ 10.     replace n_pa_total = ns_public_ad_`s1'+ns_public_ad_`s2'+ns_public_ad_
+> `s3'+ns_public_ad_`s4'+ns_public_ad_`s5'+ns_public_ad_`s6'+ns_public_ad_`s7' 
+> if cohort==`c'
+ 11. }
+(21,940 real changes made)
+(21,940 real changes made)
+(25,279 real changes made)
+(25,279 real changes made)
+(27,572 real changes made)
+(27,572 real changes made)
+(30,206 real changes made)
+(30,206 real changes made)
+(31,283 real changes made)
+(31,283 real changes made)
+(29,987 real changes made)
+(29,987 real changes made)
+(27,587 real changes made)
+(27,587 real changes made)
+(25,821 real changes made)
+(25,821 real changes made)
+(22,498 real changes made)
+(22,498 real changes made)
+(19,592 real changes made)
+(19,592 real changes made)
+(15,321 real changes made)
+(15,321 real changes made)
+(12,019 real changes made)
+(12,019 real changes made)
+(8,326 real changes made)
+(8,326 real changes made)
+(5,132 real changes made)
+(5,132 real changes made)
+(1,780 real changes made)
+(1,780 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. rename cohort birthyear
+
+. gen avg_duration = treatment / n_strike_total * 10
+(73,225 missing values generated)
+
+. gen avg_duration_pa = pa_days_lost / n_pa_total
+(73,843 missing values generated)
+
+. keep if inrange(age,30,40) & birthyear>=1971
+(73,225 observations deleted)
+
+. tempfile ta10
+
+. save `ta10'
+file
+    C:\Users\lyuan\AppData\Local\Temp\stata_worker_default_yfa1e2px\ST_8294_0
+    > 0002i.tmp saved as .dta format
+
+. foreach g in 0 1 {
+  2.     use `ta10', clear
+  3.     keep if male==`g'
+  4.     local suffix = cond(`g'==1,"MalS","FemS")
+  5.     collapse (sum) nobs (mean) treatment avg_duration avg_duration_pa pa_d
+> ays_lost pbi_pc aedu index1 log_wage ila_tot unemployed nini [aw=pondera], //
+> /
+>         by(birthyear surveyyear province male)
+  6.     egen cid = group(province)
+  7.     local rhs "treatment avg_duration avg_duration_pa i.surveyyear i.birth
+> year i.province i.birthyear*surveyyear i.province*surveyyear pa_days_lost pbi
+> _pc"
+  8.     app_export, outfile("$appendix/TA10_`suffix'.csv") vars("aedu index1 l
+> og_wage ila_tot unemployed nini") rhs("`rhs'") keep("treatment avg_duration")
+  9. }
+(145,895 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA10_FemS.csv)
+(158,448 observations deleted)
+(output written to c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replicatio
+> n/output/tables/appendix/TA10_MalS.csv)
+
+. di "✓ 05_appendix.do complete"
+✓ 05_appendix.do complete
+
+. 
+end of do-file
+
+. 
+. log close
+      name:  <unnamed>
+       log:  c:/Users/lyuan/OneDrive/Desktop/Replication Files/Replication/outp
+> ut/replication_log.txt
+  log type:  text
+ closed on:  15 May 2026, 19:15:03
+-------------------------------------------------------------------------------
