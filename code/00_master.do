@@ -7,17 +7,29 @@ version 16
 clear all
 set more off
 
-* User must set this once on local machine.
+* User can set this once on local machine.
 global root "C:/path/to/Replication"
-if "$root"=="C:/path/to/Replication" {
+
+* Respect an explicitly set root. Only auto-detect when placeholder/empty/invalid.
+capture confirm file "$root/code/00_master.do"
+local root_valid = (_rc==0)
+
+if "$root"=="C:/path/to/Replication" | "$root"=="" | `root_valid'==0 {
     local _pwd = subinstr(c(pwd),"\","/",.)
+    local _detected_root "`_pwd'"
     if substr("`_pwd'", max(1, length("`_pwd'")-4), 5)=="/code" {
-        global root = substr("`_pwd'", 1, length("`_pwd'")-5)
+        local _detected_root = substr("`_pwd'", 1, length("`_pwd'")-5)
+    }
+
+    capture confirm file "`_detected_root'/code/00_master.do"
+    if _rc==0 {
+        global root "`_detected_root'"
+        di as txt "Auto root from current working directory: $root"
     }
     else {
-        global root "`_pwd'"
+        di as err "Root path invalid. Set global root to your local Replication folder."
+        exit 198
     }
-    di as txt "Auto root from current working directory: $root"
 }
 
 global code    "$root/code"
