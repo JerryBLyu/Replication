@@ -40,18 +40,26 @@ def make_plot(suffix: str, title: str):
     wage_block = vals[9:18] if len(vals) >= 27 else vals[:9]
     x = np.arange(1, len(wage_block) + 1)
 
-    plt.style.use("seaborn-v0_8-whitegrid")
-    fig, ax = plt.subplots(figsize=(7.2, 4.6))
-    ax.plot(x, wage_block, marker="o", color="#1f77b4", linewidth=2)
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "font.size": 10,
+            "axes.titlesize": 11,
+            "axes.labelsize": 10,
+        }
+    )
+    fig, ax = plt.subplots(figsize=(7.0, 4.4))
+    ax.plot(x, wage_block, marker="o", color="#1E6091", linewidth=1.8, markersize=4.2)
     ax.axhline(0, color="black", linestyle="--", linewidth=0.9, alpha=0.6)
     ax.set_xticks(x)
     ax.set_xticklabels([f"P{10*i}" for i in x], fontsize=10)
     ax.set_xlabel("Wage percentile", fontsize=11)
     ax.set_ylabel("Treatment Coefficient", fontsize=11)
     ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    fig.text(0.01, 0.01, "Note: coefficient profile across wage deciles, from Table 3 outputs.", fontsize=9)
+    fig.text(0.01, 0.01, "Coefficient profile across wage deciles, based on Table 3.", fontsize=8.5)
     fig.tight_layout()
     stem = "male" if suffix == "MalS" else "female"
     fig.savefig(SLIDES / f"fig_distributional_wage_{stem}.png", dpi=300, bbox_inches="tight")

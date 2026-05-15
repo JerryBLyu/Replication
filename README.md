@@ -53,7 +53,7 @@ Outputs:
 - figures: `output/figures/`
 - log: `output/replication_log.txt`
 
-### Step 4: build slide figures
+### Step 4: build visualization-ready outputs
 ```bash
 python code/viz/build_slides_figures.py
 ```
@@ -61,8 +61,9 @@ python code/viz/build_slides_figures.py
 Outputs:
 - `output/slides/fig_summary_effects.png`
 - `output/slides/fig_distributional_wage_*.png`
-- `output/latex/main_tables.tex`
-- `output/latex/main_tables.pdf` (if `pdflatex` is installed)
+- `output/final/compact_tables/Table1.xlsx` ... `Table8.xlsx`
+- `output/final/latex/paper_style_report_v2.tex`
+- `output/final/latex/paper_style_report_v2.pdf` (if `pdflatex` is installed)
 
 ## Output Map
 - `output/tables/Table1.xls` — descriptive summary statistics by sex
@@ -80,6 +81,22 @@ Replication/
   output/     generated artifacts
   docs/       environment and notes
 ```
+
+## Minimal teammate workflow (download-and-run)
+1. Put raw data in `data/raw/` (or keep `../Data files` as fallback).
+2. Run Stata:
+   ```stata
+   do "code/00_master.do"
+   ```
+3. Run Python:
+   ```bash
+   python code/viz/build_slides_figures.py
+   ```
+4. Use these downstream-ready files:
+   - `output/tables/` (machine-readable regression tables for custom viz)
+   - `output/slides/` (ready-made chart assets)
+   - `output/final/compact_tables/` (8 compact table workbooks)
+   - `output/final/latex/paper_style_report_v2.pdf` (final paper-style report)
 
 ## References used for visualization ideas
 - [Econtech textbook Stata replications](https://github.com/Econtech/-Econometric-textbook-stata-replication)

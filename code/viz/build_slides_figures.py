@@ -12,7 +12,7 @@ SLIDES.mkdir(parents=True, exist_ok=True)
 SCRIPTS = [
     "plot_summary.py",
     "plot_event_study.py",
-    "build_latex_tables.py",
+    "build_paper_style_report_v2.py",
 ]
 
 LEGACY_FILES = [

@@ -87,33 +87,43 @@ err_e = [
     1.96 * ses[("MalS", "aedu")]["se_treat"] * ses[("MalS", "aedu")]["mean_treat"] / ses[("MalS", "aedu")]["mean_outcome"] * 100,
 ]
 
-plt.style.use("seaborn-v0_8-whitegrid")
-fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.8))
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.size": 10,
+        "axes.titlesize": 11,
+        "axes.labelsize": 10,
+        "legend.fontsize": 9,
+    }
+)
+fig, axes = plt.subplots(1, 2, figsize=(10.0, 4.6))
 x = np.arange(2)
 labels = ["Female", "Male"]
 bar_w = 0.34
 
-axes[0].bar(x - bar_w / 2, [paper["wage"]["Female"], paper["wage"]["Male"]], bar_w, color="#334E68", label="Paper")
-axes[0].bar(x + bar_w / 2, [rep_w_f, rep_w_m], bar_w, color="#D64550", yerr=err_w, capsize=4, label="Replication")
+axes[0].bar(x - bar_w / 2, [paper["wage"]["Female"], paper["wage"]["Male"]], bar_w, color="#4C566A", label="Paper")
+axes[0].bar(x + bar_w / 2, [rep_w_f, rep_w_m], bar_w, color="#2E7D32", yerr=err_w, capsize=3, label="Replication")
 axes[0].axhline(0, color="black", linewidth=0.8, linestyle="--")
 axes[0].set_title("Wage Effect at Mean Exposure (%)")
 axes[0].set_xticks(x, labels)
 axes[0].set_ylabel("Percent change")
+axes[0].grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
 
-axes[1].bar(x - bar_w / 2, [paper["edu"]["Female"], paper["edu"]["Male"]], bar_w, color="#334E68", label="Paper")
-axes[1].bar(x + bar_w / 2, [rep_e_f, rep_e_m], bar_w, color="#D64550", yerr=err_e, capsize=4, label="Replication")
+axes[1].bar(x - bar_w / 2, [paper["edu"]["Female"], paper["edu"]["Male"]], bar_w, color="#4C566A", label="Paper")
+axes[1].bar(x + bar_w / 2, [rep_e_f, rep_e_m], bar_w, color="#2E7D32", yerr=err_e, capsize=3, label="Replication")
 axes[1].axhline(0, color="black", linewidth=0.8, linestyle="--")
 axes[1].set_title("Education Effect at Mean Exposure (%)")
 axes[1].set_xticks(x, labels)
 axes[1].set_ylabel("Percent change")
+axes[1].grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
 
 for ax in axes:
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-fig.suptitle("Replication vs Paper Benchmarks", fontsize=13, fontweight="bold")
+fig.suptitle("Replication and Paper Benchmarks", fontsize=12, fontweight="bold")
 fig.legend(loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.01))
-fig.text(0.01, 0.01, "Replication bars from Table 2; error bars show approx. 95% CI from treatment SE.", fontsize=9)
+fig.text(0.01, 0.01, "Error bars: approximate 95% confidence intervals using treatment standard errors.", fontsize=8.5)
 fig.tight_layout(rect=[0, 0.06, 1, 1])
 fig.savefig(SLIDES / "fig_summary_effects.png", dpi=300, bbox_inches="tight")
 fig.savefig(SLIDES / "fig_summary_effects.pdf", dpi=300, bbox_inches="tight")
